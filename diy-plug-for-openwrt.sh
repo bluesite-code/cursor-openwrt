@@ -1,4 +1,7 @@
 #!/bin/bash
+#
+# File name: DIY_P1_SH
+#
 
 # 添加自定义源和软件包
 #sed -i '1i src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
