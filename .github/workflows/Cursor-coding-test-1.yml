@@ -1,0 +1,73 @@
+name: Build OpenWrt
+
+on:
+  workflow_dispatch:
+    inputs:
+      config:
+        description: '选择配置文件'
+        required: true
+        default: '.config'
+        type: choice
+        options:
+        - '.config'
+        - 'test.config'
+
+env:
+  REPO_URL: https://github.com/openwrt/openwrt
+  REPO_BRANCH: v23.05.5
+  CONFIG_FILE: ${{ github.event.inputs.config }}
+  DIY_P1_SH: diy-part1.sh
+  DIY_P2_SH: diy-part2.sh
+  UPLOAD_FIRMWARE: true
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 准备编译环境
+      run: |
+        docker build -t openwrt-builder .
+        docker create --name openwrt-container openwrt-builder
+        docker cp . openwrt-container:/openwrt
+        
+    - name: 编译 OpenWrt
+      run: |
+        docker start -a openwrt-container
+        docker exec openwrt-container /bin/bash -c "
+          cd /openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          cp $CONFIG_FILE .config
+          make defconfig
+          make download -j8
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+          make -j$(nproc) || make -j1 V=s
+        "
+
+    - name: 整理文件
+      id: organize
+      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      run: |
+        docker cp openwrt-container:/openwrt/bin .
+        cd bin/targets/*/*
+        rm -rf packages
+        echo "FIRMWARE=$PWD" >> $GITHUB_OUTPUT
+
+    - name: 上传固件
+      uses: actions/upload-artifact@v3
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      with:
+        name: OpenWrt_firmware
+        path: ${{ steps.organize.outputs.FIRMWARE }}
+
+    - name: 清理
+      if: always()
+      run: |
+        docker rm -f openwrt-container
+        docker rmi openwrt-builder
