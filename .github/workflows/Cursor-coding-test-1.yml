@@ -1,4 +1,6 @@
-name: Build OpenWrt
+# openwrt编译
+
+name: Cursor-coding-test-1
 
 on:
   workflow_dispatch:
